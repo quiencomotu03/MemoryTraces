@@ -1,0 +1,22 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "{7D3E367B-4634-6D65-50FE-E58CB3CFC971}",
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "MemoryTraces",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "ModelingToolsEditorMode",
+			"Enabled": true,
+			"TargetAllowList": [
+				"Editor"
+			]
+		}
+	]
+}

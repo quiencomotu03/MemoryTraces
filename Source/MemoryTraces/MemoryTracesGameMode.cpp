@@ -13,3 +13,17 @@ AMemoryTracesGameMode::AMemoryTracesGameMode()
 		DefaultPawnClass = PlayerPawnBPClass.Class;
 	}
 }
+
+void AMemoryTracesGameMode::HostLANGame()
+{
+	GetWorld()->ServerTravel("/Game/_GameAssets/Maps/Lvl_Prototype");
+}
+
+void AMemoryTracesGameMode::JoinLANGame()
+{
+	APlayerController* PC = GetGameInstance()->GetFirstLocalPlayerController();
+	if (PC)
+	{
+		PC->ClientTravel("172.30.1.34", TRAVEL_Absolute);
+	}
+}

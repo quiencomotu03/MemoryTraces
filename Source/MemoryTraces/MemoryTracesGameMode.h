@@ -12,7 +12,13 @@ class AMemoryTracesGameMode : public AGameModeBase
 	GENERATED_BODY()
 
 public:
-	AMemoryTracesGameMode();
+	AMemoryTracesGameMode(); 
+
+	UFUNCTION(BlueprintCallable)
+	void HostLANGame();
+
+	UFUNCTION(BlueprintCallable)
+	void JoinLANGame();
 };
 
 

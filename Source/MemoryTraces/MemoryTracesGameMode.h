@@ -3,11 +3,22 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/GameModeBase.h"
+#include "GameFramework/GameMode.h"
 #include "MemoryTracesGameMode.generated.h"
 
+
+// ----------------------
+// 플레이어 역할 Enum
+// ----------------------
+UENUM(BlueprintType)
+enum class EPlayerRole : uint8
+{
+	Verifier UMETA(DisplayName = "Memory Verifier"),  // 감정사
+	Detective UMETA(DisplayName = "Detective")        // 탐정
+};
+
 UCLASS(minimalapi)
-class AMemoryTracesGameMode : public AGameModeBase
+class AMemoryTracesGameMode : public AGameMode
 {
 	GENERATED_BODY()
 
@@ -19,6 +30,29 @@ public:
 
 	UFUNCTION(BlueprintCallable)
 	void JoinLANGame();
+
+protected:
+	virtual void BeginPlay() override;
+	virtual void OnPostLogin(AController* NewPlayer) override;
+	virtual void Logout(AController* Exiting) override;
+
+private:
+	/** 현재 접속 중인 플레이어 수 */
+	int32 PlayerCount = 0;
+
+	/** 세션 시작을 위한 타이머 */
+	FTimerHandle StartTimerHandle;
+
+	/** 15초 대기 후 평가 실행 */
+	void EvaluatePlayers();
+
+	/** 두 명이 모두 모였을 때 역할 배정 */
+	void AssignRandomRoles();
+
+
+	/** 즉시 시작 여부 (2명 모두 접속 시) */
+	bool bShouldStartImmediately = false;
+
 };
 
 

@@ -26,9 +26,11 @@ protected:
 
 	void Input_Move(const struct FInputActionValue& Value);
 	void Input_Look(const struct FInputActionValue& Value);
+	void Input_Jump(const FInputActionValue& Value);
 public:	
 	
 	virtual void Tick(float DeltaTime) override;
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 };
+ 

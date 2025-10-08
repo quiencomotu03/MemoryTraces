@@ -31,10 +31,22 @@ public:
 	UFUNCTION(BlueprintCallable)
 	void JoinLANGame();
 
+	UPROPERTY(EditDefaultsOnly, Category = "Characters")
+	TSubclassOf<class ACharacter> VerifierClass;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Characters")
+	TSubclassOf<ACharacter> DetectiveClass;
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void OnPostLogin(AController* NewPlayer) override;
 	virtual void Logout(AController* Exiting) override;
+
+	/** 플레이어가 스폰될 위치 선택 */
+	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;
+
+	/** 어떤 Pawn 클래스를 사용할지 결정 (역할에 따라 분기) */
+	virtual UClass* GetDefaultPawnClassForController_Implementation(AController* InController) override;
 
 private:
 	/** 현재 접속 중인 플레이어 수 */

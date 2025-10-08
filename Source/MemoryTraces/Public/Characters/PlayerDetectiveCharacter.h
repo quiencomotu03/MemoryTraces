@@ -3,11 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Character.h"
+#include "Characters/MFCharacter.h"
 #include "PlayerDetectiveCharacter.generated.h"
 
 UCLASS()
-class MEMORYTRACES_API APlayerDetectiveCharacter : public ACharacter
+class MEMORYTRACES_API APlayerDetectiveCharacter : public AMFCharacter
 {
 	GENERATED_BODY()
 

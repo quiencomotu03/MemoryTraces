@@ -2,9 +2,11 @@
 
 #include "MemoryTracesGameMode.h"
 #include "MemoryTracesCharacter.h"
+
 #include "Kismet/GameplayStatics.h"
 #include "GameInstance/UMFGameInstance.h"
 #include "UObject/ConstructorHelpers.h"
+#include "LobbyGameMode/MFLobbyGameMode.h"
 
 AMemoryTracesGameMode::AMemoryTracesGameMode()
 {
@@ -54,6 +56,9 @@ void AMemoryTracesGameMode::OnPostLogin(AController* NewPlayer)
 
 	UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] Player joined. Count = %d"), PlayerCount);
 
+	// 자동 Pawn 스폰 + Possess 보장
+	RestartPlayer(NewPlayer);
+
 	// 두 명 모두 모이면 즉시 시작
 	if (PlayerCount >= 2)
 	{
@@ -81,6 +86,44 @@ void AMemoryTracesGameMode::Logout(AController* Exiting)
 	PlayerCount = FMath::Max(0, PlayerCount - 1);
 	UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] Player left. Count = %d"), PlayerCount);
 }
+
+AActor* AMemoryTracesGameMode::ChoosePlayerStart_Implementation(AController* Player)
+{
+	return Super::ChoosePlayerStart_Implementation(Player);
+}
+
+UClass* AMemoryTracesGameMode::GetDefaultPawnClassForController_Implementation(AController* InController)
+{
+	UUMFGameInstance* GI = Cast<UUMFGameInstance>(GetGameInstance());
+	if (!GI)
+	{
+		UE_LOG(LogTemp, Error, TEXT("GameInstance not found!"));
+		return Super::GetDefaultPawnClassForController_Implementation(InController);
+	}
+
+	UE_LOG(LogTemp, Warning, TEXT("GetDefaultPawnClassForController called. Multiplayer = %d"), GI->bIsMultiplayer);
+
+
+	if (GI->bIsMultiplayer)
+	{
+		FString PlayerName = InController->GetName();
+		if (GI->PlayerRoles.Contains(PlayerName))
+		{
+			EPlayerRole PlayerRole = GI->PlayerRoles[PlayerName];
+			UE_LOG(LogTemp, Warning, TEXT("Player %s assigned role %d"), *PlayerName, (int32)PlayerRole);
+
+			return (PlayerRole == EPlayerRole::Verifier) ? VerifierClass : DetectiveClass;
+		}
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("SinglePlayer mode -> VerifierClass"));
+		return VerifierClass;
+	}
+
+	return Super::GetDefaultPawnClassForController_Implementation(InController);
+}
+
 
 void AMemoryTracesGameMode::EvaluatePlayers()
 {

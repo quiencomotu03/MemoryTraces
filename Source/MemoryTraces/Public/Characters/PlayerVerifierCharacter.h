@@ -3,11 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GameFramework/Character.h"
+#include "Characters/MFCharacter.h"
 #include "PlayerVerifierCharacter.generated.h"
 
 UCLASS()
-class MEMORYTRACES_API APlayerVerifierCharacter : public ACharacter
+class MEMORYTRACES_API APlayerVerifierCharacter : public AMFCharacter
 {
 	GENERATED_BODY()
 

@@ -7,7 +7,7 @@
 
 UUMFGameInstance::UUMFGameInstance()
 {
-
+	bHasStartedMultiplayer = false;
 }
 
 UMultiplayerSessionSubsystem* UUMFGameInstance::GetSessionSubsystem() const

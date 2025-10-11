@@ -19,33 +19,10 @@ AMemoryTracesGameMode::AMemoryTracesGameMode()
 	PlayerCount = 0;
 }
 
-void AMemoryTracesGameMode::HostLANGame()
-{
-	GetWorld()->ServerTravel("/Game/_GameAssets/Maps/Lvl_Prototype");
-}
-
-void AMemoryTracesGameMode::JoinLANGame()
-{
-	APlayerController* PC = GetGameInstance()->GetFirstLocalPlayerController();
-	if (PC)
-	{
-		PC->ClientTravel("172.30.1.34", TRAVEL_Absolute);
-	}
-}
 
 void AMemoryTracesGameMode::BeginPlay()
 {
 	Super::BeginPlay();
-	// 15초 후 EvaluatePlayers() 실행
-	GetWorldTimerManager().SetTimer(
-		StartTimerHandle,
-		this,
-		&AMemoryTracesGameMode::EvaluatePlayers,
-		60.0f,
-		false
-	);
-
-	UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] BeginPlay called, waiting 15s for player..."));
 	
 }
 
@@ -55,9 +32,6 @@ void AMemoryTracesGameMode::OnPostLogin(AController* NewPlayer)
 	PlayerCount++;
 
 	UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] Player joined. Count = %d"), PlayerCount);
-
-	// 자동 Pawn 스폰 + Possess 보장
-	RestartPlayer(NewPlayer);
 
 	// 두 명 모두 모이면 즉시 시작
 	if (PlayerCount >= 2)
@@ -129,11 +103,22 @@ void AMemoryTracesGameMode::EvaluatePlayers()
 {
 	UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] EvaluatePlayers triggered. Count = %d"), PlayerCount);
 
+
 	UWorld* World = GetWorld();
 	if (!World) return;
+	
 
 	UUMFGameInstance* GI = Cast<UUMFGameInstance>(UGameplayStatics::GetGameInstance(World));
 	if (!GI) return;
+
+	//  이미 멀티 시작된 적 있으면 중복 방지
+	if (GI->bHasStartedMultiplayer)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] EvaluatePlayers skipped (already traveled once)."));
+		return;
+	}
+
+	GetWorldTimerManager().ClearTimer(StartTimerHandle);
 
 	/**/
 	if (PlayerCount >= 2)
@@ -141,6 +126,9 @@ void AMemoryTracesGameMode::EvaluatePlayers()
 		// 멀티플레이 모드
 		GI->bIsMultiplayer = true;
 		AssignRandomRoles();
+
+		// 여기서 GameInstance에 상태 저장
+		GI->bHasStartedMultiplayer = true;
 
 		UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] Starting Multiplayer level via ServerTravel..."));
 

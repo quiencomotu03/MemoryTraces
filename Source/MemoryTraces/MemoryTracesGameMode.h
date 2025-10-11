@@ -25,12 +25,6 @@ class AMemoryTracesGameMode : public AGameMode
 public:
 	AMemoryTracesGameMode(); 
 
-	UFUNCTION(BlueprintCallable)
-	void HostLANGame();
-
-	UFUNCTION(BlueprintCallable)
-	void JoinLANGame();
-
 	UPROPERTY(EditDefaultsOnly, Category = "Characters")
 	TSubclassOf<class ACharacter> VerifierClass;
 
@@ -64,6 +58,8 @@ private:
 
 	/** 즉시 시작 여부 (2명 모두 접속 시) */
 	bool bShouldStartImmediately = false;
+
+	bool bHasTraveled = false;
 
 };
 

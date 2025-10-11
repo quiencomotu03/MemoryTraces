@@ -34,6 +34,6 @@ public:
     UFUNCTION(BlueprintCallable)
     class UMultiplayerSessionSubsystem* GetSessionSubsystem() const;
 	
-
+    bool bHasStartedMultiplayer = false;
 
 };

@@ -15,6 +15,8 @@ AMFCharacter::AMFCharacter()
 
     // 이동 방향으로 자동 회전 끄기
     GetCharacterMovement()->bOrientRotationToMovement = false;
+    bReplicates = true;
+    bAlwaysRelevant = true;
 }
 
 

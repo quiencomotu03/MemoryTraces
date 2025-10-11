@@ -2,6 +2,7 @@
 
 #include "MemoryTracesGameMode.h"
 #include "MemoryTracesCharacter.h"
+#include "GameFramework/PlayerStart.h"
 
 #include "Kismet/GameplayStatics.h"
 #include "GameInstance/UMFGameInstance.h"
@@ -10,13 +11,16 @@
 
 AMemoryTracesGameMode::AMemoryTracesGameMode()
 {
+	bUseSeamlessTravel = true; // 
+	PlayerCount = 0;
+	
 	// set default pawn class to our Blueprinted character
 	static ConstructorHelpers::FClassFinder<APawn> PlayerPawnBPClass(TEXT("/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter"));
 	if (PlayerPawnBPClass.Class != NULL)
 	{
 		DefaultPawnClass = PlayerPawnBPClass.Class;
 	}
-	PlayerCount = 0;
+	
 }
 
 
@@ -63,6 +67,35 @@ void AMemoryTracesGameMode::Logout(AController* Exiting)
 
 AActor* AMemoryTracesGameMode::ChoosePlayerStart_Implementation(AController* Player)
 {
+	UUMFGameInstance* GI = Cast<UUMFGameInstance>(GetGameInstance());
+	if (!GI)
+		return Super::ChoosePlayerStart_Implementation(Player);
+
+	FString PlayerName = Player->GetName();
+	if (!GI->PlayerRoles.Contains(PlayerName))
+		return Super::ChoosePlayerStart_Implementation(Player);
+
+	EPlayerRole PRole = GI->PlayerRoles[PlayerName];
+
+	FName DesiredTag = (PRole == EPlayerRole::Verifier)
+		? FName("PlayerStart_Verifier")
+		: FName("PlayerStart_Detective");
+
+	// 월드의 모든 PlayerStart 탐색
+	TArray<AActor*> PlayerStarts;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), APlayerStart::StaticClass(), PlayerStarts);
+
+	for (AActor* Start : PlayerStarts)
+	{
+		if (Start->ActorHasTag(DesiredTag))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] %s assigned to %s"),
+				*PlayerName, *DesiredTag.ToString());
+			return Start; // 태그 일치하는 위치 반환
+		}
+	}
+
+	// 태그 못찾으면 기본값으로
 	return Super::ChoosePlayerStart_Implementation(Player);
 }
 
@@ -134,7 +167,7 @@ void AMemoryTracesGameMode::EvaluatePlayers()
 
 		// 모든 클라이언트를 포함해 멀티레벨로 이동
 		FString LevelPath = TEXT("/Game/_GameAssets/Maps/Tutorail/Lvl_MultiplayerStart"); // 실제 경로에 맞게 수정
-		World->ServerTravel(LevelPath + TEXT("?listen"));
+		World->ServerTravel(LevelPath);
 	}
 	else
 	{

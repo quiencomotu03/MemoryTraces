@@ -3,7 +3,7 @@
 #include "MemoryTracesGameMode.h"
 #include "MemoryTracesCharacter.h"
 #include "GameFramework/PlayerStart.h"
-
+#include "Core/MFPlayerState.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameInstance/UMFGameInstance.h"
 #include "UObject/ConstructorHelpers.h"
@@ -36,6 +36,34 @@ void AMemoryTracesGameMode::OnPostLogin(AController* NewPlayer)
 	PlayerCount++;
 
 	UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] Player joined. Count = %d"), PlayerCount);
+	//  GameInstance 캐스팅
+	UUMFGameInstance* GI = Cast<UUMFGameInstance>(GetGameInstance());
+	if (!GI)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[MFGameMode] GameInstance not found!"));
+		return;
+	}
+
+	//  플레이어 이름으로 역할 등록
+	FString PlayerName = NewPlayer->GetName();
+	EPlayerRole AssignedRole = (PlayerCount == 1) ? EPlayerRole::Verifier : EPlayerRole::Detective;
+
+	// GameInstance에 등록
+	GI->PlayerRoles.Add(PlayerName, AssignedRole);
+
+	UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] %s assigned as %s"),
+		*PlayerName,
+		*UEnum::GetValueAsString(AssignedRole));
+
+	// 플레이어 상태(PlayerState)에 역할 값 넣기 (선택, UI/HUD용)
+	AMFPlayerState* PS = NewPlayer->GetPlayerState<AMFPlayerState>();
+	if (PS)
+	{
+		PS->SetPlayerRole(AssignedRole);
+		UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] PlayerState role set for %s = %s"),
+			*PlayerName,
+			*UEnum::GetValueAsString(AssignedRole));
+	}
 
 	// 두 명 모두 모이면 즉시 시작
 	if (PlayerCount >= 2)

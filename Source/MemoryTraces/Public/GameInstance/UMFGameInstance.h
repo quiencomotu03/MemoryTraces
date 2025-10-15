@@ -28,6 +28,18 @@ public:
 
     UPROPERTY(BlueprintReadWrite)
     TMap<FString, EPlayerRole> PlayerRoles;
+
+    void SetPlayerRole(const FString& PlayerName, EPlayerRole Role)
+    {
+        PlayerRoles.FindOrAdd(PlayerName) = Role;
+    }
+
+    EPlayerRole GetPlayerRole(const FString& PlayerName) const
+    {
+        if (const EPlayerRole* Found = PlayerRoles.Find(PlayerName))
+            return *Found;
+        return EPlayerRole::Verifier; // 기본값
+    }
    
 
     // 세션 Subsystem 접근용 헬퍼

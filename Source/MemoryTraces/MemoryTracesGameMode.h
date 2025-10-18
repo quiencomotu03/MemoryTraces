@@ -31,6 +31,9 @@ public:
 	UPROPERTY(EditDefaultsOnly, Category = "Characters")
 	TSubclassOf<ACharacter> DetectiveClass;
 
+	UFUNCTION()
+	void SpawnPawnForRole(AController* Ctrl, EPlayerRole PRole);
+
 protected:
 	virtual void BeginPlay() override;
 	virtual void OnPostLogin(AController* NewPlayer) override;
@@ -54,7 +57,6 @@ private:
 
 	/** 두 명이 모두 모였을 때 역할 배정 */
 	void AssignRandomRoles();
-
 
 	/** 즉시 시작 여부 (2명 모두 접속 시) */
 	bool bShouldStartImmediately = false;

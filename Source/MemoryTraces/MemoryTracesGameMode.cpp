@@ -24,6 +24,65 @@ AMemoryTracesGameMode::AMemoryTracesGameMode()
 }
 
 
+void AMemoryTracesGameMode::SpawnPawnForRole(AController* Ctrl, EPlayerRole PRole)
+{
+	if (!Ctrl) return;
+
+	// 기존 Pawn 제거
+	if (APawn* OldPawn = Ctrl->GetPawn())
+	{
+		OldPawn->Destroy();
+	}
+
+	// PlayerStart 위치 찾기
+	FName StartTag = (PRole == EPlayerRole::Verifier)
+		? FName("PlayerStart_Verifier")
+		: FName("PlayerStart_Detective");
+
+	TArray<AActor*> PlayerStarts;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), APlayerStart::StaticClass(), PlayerStarts);
+	AActor* StartSpot = nullptr;
+
+	for (AActor* Start : PlayerStarts)
+	{
+		if (Start->ActorHasTag(StartTag))
+		{
+			StartSpot = Start;
+			break;
+		}
+	}
+
+	if (!StartSpot && PlayerStarts.Num() > 0)
+		StartSpot = PlayerStarts[0];
+
+	TSubclassOf<APawn> SpawnClass = (PRole == EPlayerRole::Verifier)
+		? VerifierClass
+		: DetectiveClass;
+
+	if (!SpawnClass || !StartSpot)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[MFGameMode] Spawn failed: invalid class or start spot"));
+		return;
+	}
+
+	// Pawn 스폰 + Possess
+	FTransform SpawnTransform = StartSpot->GetActorTransform();
+	APawn* NewPawn = GetWorld()->SpawnActor<APawn>(SpawnClass, SpawnTransform);
+
+	if (NewPawn)
+	{
+		Ctrl->Possess(NewPawn);
+		UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] %s spawned as %s"),
+			*Ctrl->GetName(), *UEnum::GetValueAsString(PRole));
+
+		// PlayerState에도 반영
+		if (AMFPlayerState* PS = Ctrl->GetPlayerState<AMFPlayerState>())
+		{
+			PS->SetPlayerRole(PRole);
+		}
+	}
+}
+
 void AMemoryTracesGameMode::BeginPlay()
 {
 	Super::BeginPlay();
@@ -51,7 +110,7 @@ void AMemoryTracesGameMode::OnPostLogin(AController* NewPlayer)
 	// GameInstance에 등록
 	GI->PlayerRoles.Add(PlayerName, AssignedRole);
 
-	UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] %s assigned as %s"),
+	UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] %s assigned as %s in GM & GI"),
 		*PlayerName,
 		*UEnum::GetValueAsString(AssignedRole));
 
@@ -68,19 +127,34 @@ void AMemoryTracesGameMode::OnPostLogin(AController* NewPlayer)
 	// 두 명 모두 모이면 즉시 시작
 	if (PlayerCount >= 2)
 	{
-		bShouldStartImmediately = true;
+		TArray<AController*> AllControllers;
+		for (FConstControllerIterator It = GetWorld()->GetControllerIterator(); It; ++It)
+		{
+			AController* Ctrller = It->Get();
+			if (Ctrller) AllControllers.Add(Ctrller);
+		}
 
-		// 혹시 기존 타이머 있으면 초기화
-		GetWorldTimerManager().ClearTimer(StartTimerHandle);
+		if (AllControllers.Num() == 2)
+		{
+			int32 RandomIndex = FMath::RandRange(0, 1);
+			AController* VerifierCtrl = AllControllers[RandomIndex];
+			AController* DetectiveCtrl = AllControllers[1 - RandomIndex];
 
-		// 10초 대기 후 EvaluatePlayers() 실행
-		GetWorldTimerManager().SetTimer(
-			StartTimerHandle,
-			this,
-			&AMemoryTracesGameMode::EvaluatePlayers,
-			10.0f,
-			false
-		);
+			FString VerifierName = VerifierCtrl->GetName();
+			FString DetectiveName = DetectiveCtrl->GetName();
+
+			GI->PlayerRoles.Empty();
+			GI->PlayerRoles.Add(VerifierName, EPlayerRole::Verifier);
+			GI->PlayerRoles.Add(DetectiveName, EPlayerRole::Detective);
+
+			UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] Random Role Assigned: %s = Verifier, %s = Detective"),
+				*VerifierName, *DetectiveName);
+
+			// 각 컨트롤러에 맞는 Pawn 스폰
+			SpawnPawnForRole(VerifierCtrl, EPlayerRole::Verifier);
+			SpawnPawnForRole(DetectiveCtrl, EPlayerRole::Detective);
+
+		}
 
 		UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] Two players ready. Starting match in 10 seconds..."));
 	}
@@ -129,34 +203,9 @@ AActor* AMemoryTracesGameMode::ChoosePlayerStart_Implementation(AController* Pla
 
 UClass* AMemoryTracesGameMode::GetDefaultPawnClassForController_Implementation(AController* InController)
 {
-	UUMFGameInstance* GI = Cast<UUMFGameInstance>(GetGameInstance());
-	if (!GI)
-	{
-		UE_LOG(LogTemp, Error, TEXT("GameInstance not found!"));
-		return Super::GetDefaultPawnClassForController_Implementation(InController);
-	}
+	// 자동 스폰 방지용
+	return nullptr;
 
-	UE_LOG(LogTemp, Warning, TEXT("GetDefaultPawnClassForController called. Multiplayer = %d"), GI->bIsMultiplayer);
-
-
-	if (GI->bIsMultiplayer)
-	{
-		FString PlayerName = InController->GetName();
-		if (GI->PlayerRoles.Contains(PlayerName))
-		{
-			EPlayerRole PlayerRole = GI->PlayerRoles[PlayerName];
-			UE_LOG(LogTemp, Warning, TEXT("Player %s assigned role %d"), *PlayerName, (int32)PlayerRole);
-
-			return (PlayerRole == EPlayerRole::Verifier) ? VerifierClass : DetectiveClass;
-		}
-	}
-	else
-	{
-		UE_LOG(LogTemp, Warning, TEXT("SinglePlayer mode -> VerifierClass"));
-		return VerifierClass;
-	}
-
-	return Super::GetDefaultPawnClassForController_Implementation(InController);
 }
 
 

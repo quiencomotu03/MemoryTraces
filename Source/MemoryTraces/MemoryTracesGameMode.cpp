@@ -4,6 +4,7 @@
 #include "MemoryTracesCharacter.h"
 #include "GameFramework/PlayerStart.h"
 #include "Core/MFPlayerState.h"
+#include "MFPlayerController/MFPlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "GameInstance/UMFGameInstance.h"
 #include "UObject/ConstructorHelpers.h"
@@ -14,12 +15,6 @@ AMemoryTracesGameMode::AMemoryTracesGameMode()
 	bUseSeamlessTravel = true; // 
 	PlayerCount = 0;
 	
-	// set default pawn class to our Blueprinted character
-	static ConstructorHelpers::FClassFinder<APawn> PlayerPawnBPClass(TEXT("/Game/ThirdPerson/Blueprints/BP_ThirdPersonCharacter"));
-	if (PlayerPawnBPClass.Class != NULL)
-	{
-		DefaultPawnClass = PlayerPawnBPClass.Class;
-	}
 	
 }
 
@@ -102,61 +97,53 @@ void AMemoryTracesGameMode::OnPostLogin(AController* NewPlayer)
 		UE_LOG(LogTemp, Error, TEXT("[MFGameMode] GameInstance not found!"));
 		return;
 	}
+	if (PlayerCount < 2) return; // 두 명 접속 시점만 처리
 
-	//  플레이어 이름으로 역할 등록
-	FString PlayerName = NewPlayer->GetName();
-	EPlayerRole AssignedRole = (PlayerCount == 1) ? EPlayerRole::Verifier : EPlayerRole::Detective;
-
-	// GameInstance에 등록
-	GI->PlayerRoles.Add(PlayerName, AssignedRole);
-
-	UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] %s assigned as %s in GM & GI"),
-		*PlayerName,
-		*UEnum::GetValueAsString(AssignedRole));
-
-	// 플레이어 상태(PlayerState)에 역할 값 넣기 (선택, UI/HUD용)
-	AMFPlayerState* PS = NewPlayer->GetPlayerState<AMFPlayerState>();
-	if (PS)
+	// 모든 컨트롤러 가져오기
+	TArray<AController*> AllControllers;
+	for (FConstControllerIterator It = GetWorld()->GetControllerIterator(); It; ++It)
 	{
-		PS->SetPlayerRole(AssignedRole);
-		UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] PlayerState role set for %s = %s"),
-			*PlayerName,
-			*UEnum::GetValueAsString(AssignedRole));
+		if (AController* C = It->Get())
+			AllControllers.Add(C);
 	}
 
-	// 두 명 모두 모이면 즉시 시작
-	if (PlayerCount >= 2)
+	if (AllControllers.Num() != 2) return;
+
+	// 랜덤 역할 배정
+	int32 RandomIndex = FMath::RandRange(0, 1);
+	AController* VerifierCtrl = AllControllers[RandomIndex];
+	AController* DetectiveCtrl = AllControllers[1 - RandomIndex];
+
+	GI->PlayerRoles.Empty();
+	GI->PlayerRoles.Add(VerifierCtrl->GetName(), EPlayerRole::Verifier);
+	GI->PlayerRoles.Add(DetectiveCtrl->GetName(), EPlayerRole::Detective);
+
+	UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] Random Role Assigned: %s = Verifier, %s = Detective"),
+		*VerifierCtrl->GetName(), *DetectiveCtrl->GetName());
+
+	// Pawn 스폰
+	SpawnPawnForRole(VerifierCtrl, EPlayerRole::Verifier);
+	SpawnPawnForRole(DetectiveCtrl, EPlayerRole::Detective);
+
+	// 각 클라이언트에게 역할 전달 (UI 생성용)
+	if (AMFPlayerController* PCV = Cast<AMFPlayerController>(VerifierCtrl))
 	{
-		TArray<AController*> AllControllers;
-		for (FConstControllerIterator It = GetWorld()->GetControllerIterator(); It; ++It)
-		{
-			AController* Ctrller = It->Get();
-			if (Ctrller) AllControllers.Add(Ctrller);
-		}
+		FTimerHandle TimerV;
+		GetWorldTimerManager().SetTimer(TimerV, [PCV]()
+			{
+				if (IsValid(PCV))
+					PCV->Client_ReceiveRole(EPlayerRole::Verifier);
+			}, 1.0f, false);
+	}
 
-		if (AllControllers.Num() == 2)
-		{
-			int32 RandomIndex = FMath::RandRange(0, 1);
-			AController* VerifierCtrl = AllControllers[RandomIndex];
-			AController* DetectiveCtrl = AllControllers[1 - RandomIndex];
-
-			FString VerifierName = VerifierCtrl->GetName();
-			FString DetectiveName = DetectiveCtrl->GetName();
-
-			GI->PlayerRoles.Empty();
-			GI->PlayerRoles.Add(VerifierName, EPlayerRole::Verifier);
-			GI->PlayerRoles.Add(DetectiveName, EPlayerRole::Detective);
-
-			UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] Random Role Assigned: %s = Verifier, %s = Detective"),
-				*VerifierName, *DetectiveName);
-
-			// 각 컨트롤러에 맞는 Pawn 스폰
-			SpawnPawnForRole(VerifierCtrl, EPlayerRole::Verifier);
-			SpawnPawnForRole(DetectiveCtrl, EPlayerRole::Detective);
-
-		}
-
-		UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] Two players ready. Starting match in 10 seconds..."));
+	if (AMFPlayerController* PCD = Cast<AMFPlayerController>(DetectiveCtrl))
+	{
+		FTimerHandle TimerD;
+		GetWorldTimerManager().SetTimer(TimerD, [PCD]()
+			{
+				if (IsValid(PCD))
+					PCD->Client_ReceiveRole(EPlayerRole::Detective);
+			}, 1.0f, false);
 	}
 }
 
@@ -199,91 +186,4 @@ AActor* AMemoryTracesGameMode::ChoosePlayerStart_Implementation(AController* Pla
 
 	// 태그 못찾으면 기본값으로
 	return Super::ChoosePlayerStart_Implementation(Player);
-}
-
-UClass* AMemoryTracesGameMode::GetDefaultPawnClassForController_Implementation(AController* InController)
-{
-	// 자동 스폰 방지용
-	return nullptr;
-
-}
-
-
-void AMemoryTracesGameMode::EvaluatePlayers()
-{
-	UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] EvaluatePlayers triggered. Count = %d"), PlayerCount);
-
-
-	UWorld* World = GetWorld();
-	if (!World) return;
-	
-
-	UUMFGameInstance* GI = Cast<UUMFGameInstance>(UGameplayStatics::GetGameInstance(World));
-	if (!GI) return;
-
-	//  이미 멀티 시작된 적 있으면 중복 방지
-	if (GI->bHasStartedMultiplayer)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] EvaluatePlayers skipped (already traveled once)."));
-		return;
-	}
-
-	GetWorldTimerManager().ClearTimer(StartTimerHandle);
-
-	/**/
-	if (PlayerCount >= 2)
-	{
-		// 멀티플레이 모드
-		GI->bIsMultiplayer = true;
-		AssignRandomRoles();
-
-		// 여기서 GameInstance에 상태 저장
-		GI->bHasStartedMultiplayer = true;
-
-		UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] Starting Multiplayer level via ServerTravel..."));
-
-		// 모든 클라이언트를 포함해 멀티레벨로 이동
-		FString LevelPath = TEXT("/Game/_GameAssets/Maps/Tutorail/Lvl_MultiplayerStart"); // 실제 경로에 맞게 수정
-		World->ServerTravel(LevelPath);
-	}
-	else
-	{
-		// 싱글플레이 모드 (감정사 고정)
-		GI->bIsMultiplayer = false;
-		GI->LocalPlayerR = EPlayerRole::Verifier;
-
-		UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] Starting Singleplayer level..."));
-		UGameplayStatics::OpenLevel(World, "Lvl_SinglePlayerStart");
-	}
-}
-
-void AMemoryTracesGameMode::AssignRandomRoles()
-{
-	UWorld* World = GetWorld();
-	if (!World) return;
-
-	TArray<AController*> Controllers;
-	for (FConstControllerIterator It = World->GetControllerIterator(); It; ++It)
-	{
-		if (AController* Ctrl = It->Get())
-			Controllers.Add(Ctrl);
-	}
-
-	/**/
-	if (Controllers.Num() == 2)
-	{
-		int32 RandomIndex = FMath::RandRange(0, 1);
-		UUMFGameInstance* GI = Cast<UUMFGameInstance>(UGameplayStatics::GetGameInstance(World));
-
-		if (GI)
-		{
-			GI->PlayerRoles.Empty();
-			GI->PlayerRoles.Add(Controllers[RandomIndex]->GetName(), EPlayerRole::Verifier);
-			GI->PlayerRoles.Add(Controllers[1 - RandomIndex]->GetName(), EPlayerRole::Detective);
-
-			UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] Role assigned: %s = Verifier, %s = Detective"),
-				*Controllers[RandomIndex]->GetName(),
-				*Controllers[1 - RandomIndex]->GetName());
-		}
-	}
 }

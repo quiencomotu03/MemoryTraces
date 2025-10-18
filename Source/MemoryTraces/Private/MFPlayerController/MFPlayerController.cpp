@@ -3,7 +3,7 @@
 
 #include "MFPlayerController/MFPlayerController.h"
 #include "Blueprint/UserWidget.h"
-#include "GameInstance/UMFGameInstance.h"
+#include "../MemoryTracesGameMode.h"
 #include "Kismet/GameplayStatics.h"
 
 
@@ -15,24 +15,41 @@ AMFPlayerController::AMFPlayerController()
 void AMFPlayerController::BeginPlay()
 {
     Super::BeginPlay();
-    UUMFGameInstance* GI = Cast<UUMFGameInstance>(GetGameInstance());
-    if (!GI) return;
-
-    FString PlayerName = GetName();
-    EPlayerRole PRole = GI->GetPlayerRole(PlayerName);
-
-    UE_LOG(LogTemp, Warning, TEXT("[MFPlayerController] %s Role = %s"),
-        *PlayerName, *UEnum::GetValueAsString(PRole));
-
-    if (PRole == EPlayerRole::Verifier)
-    {
-        UUserWidget* VerifierWidget = CreateWidget(this, VerifierUIClass);
-        if (VerifierWidget) VerifierWidget->AddToViewport();
-    }
-    else if (PRole == EPlayerRole::Detective)
-    {
-        UUserWidget* DetectiveWidget = CreateWidget(this, DetectiveUIClass);
-        if (DetectiveWidget) DetectiveWidget->AddToViewport();
-    }
+    UE_LOG(LogTemp, Warning, TEXT("[MFPlayerController] BeginPlay executed for %s"), *GetName());
+    
 }
 
+void AMFPlayerController::Client_ReceiveRole_Implementation(EPlayerRole AssignedRole)
+{
+    UE_LOG(LogTemp, Warning, TEXT("[MFPlayerController] Client_ReceiveRole called: %s -> %s"),
+        *GetName(), *UEnum::GetValueAsString(AssignedRole));
+
+    if (!IsLocalController())
+    {
+        UE_LOG(LogTemp, Warning, TEXT("[MFPlayerController] %s is not local controller, skipping UI creation"), *GetName());
+        return;
+    }
+
+    UUserWidget* CreatedUI = nullptr;
+
+    if (AssignedRole == EPlayerRole::Verifier)
+    {
+        CreatedUI = CreateWidget(this, VerifierUIClass);
+    }
+    else if (AssignedRole == EPlayerRole::Detective)
+    {
+        CreatedUI = CreateWidget(this, DetectiveUIClass);
+    }
+
+    if (CreatedUI)
+    {
+        CreatedUI->AddToViewport();
+        UE_LOG(LogTemp, Warning, TEXT("[MFPlayerController] %s UI added for %s"),
+            *GetName(), *UEnum::GetValueAsString(AssignedRole));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("[MFPlayerController] %s Failed to create UI for %s"),
+            *GetName(), *UEnum::GetValueAsString(AssignedRole));
+    }
+}

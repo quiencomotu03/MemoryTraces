@@ -30,6 +30,32 @@ void AMFLobbyGameMode::OnPostLogin(AController* NewPlayer)
 
 	if (PlayerCount >= 2)
 	{
+		TArray<AController*> Controllers;
+		for (FConstControllerIterator It = GetWorld()->GetControllerIterator(); It; ++It)
+		{
+			if (AController* C = It->Get())
+			{
+				Controllers.Add(C);
+			}
+		}
+		if (Controllers.Num() == 2)
+		{
+			int32 RandomIndex = FMath::RandRange(0, 1);
+			AController* VerifierCtrl = Controllers[RandomIndex];
+			AController* DetectiveCtrl = Controllers[1 - RandomIndex];
+
+			//GameInstnace에 저장
+			if (UUMFGameInstance* GI = Cast< UUMFGameInstance>(GetGameInstance()))
+			{
+				GI->PlayerRoles.Empty();
+				GI->SetPlayerRole(VerifierCtrl->GetName(), EPlayerRole::Verifier);
+				GI->SetPlayerRole(DetectiveCtrl->GetName(), EPlayerRole::Detective);
+			}
+
+
+		}
+
+		
 		// 두 명 모이면 10초 후 자동 이동
 		GetWorldTimerManager().ClearTimer(StartTimerHandle);
 		GetWorldTimerManager().SetTimer(StartTimerHandle, this, &AMFLobbyGameMode::EvaluatePlayers, 5.0f, false);

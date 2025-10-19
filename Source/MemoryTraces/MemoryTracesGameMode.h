@@ -14,7 +14,8 @@ UENUM(BlueprintType)
 enum class EPlayerRole : uint8
 {
 	Verifier UMETA(DisplayName = "Memory Verifier"),  // 감정사
-	Detective UMETA(DisplayName = "Detective")        // 탐정
+	Detective UMETA(DisplayName = "Detective"),
+	None UMETA(DisplayName = "None")// 탐정
 };
 
 UCLASS(minimalapi)
@@ -34,10 +35,11 @@ public:
 	UFUNCTION()
 	void SpawnPawnForRole(AController* Ctrl, EPlayerRole PRole);
 
+	UFUNCTION()
+	void SetupPlayersAfterTravel();
+
 protected:
 	virtual void BeginPlay() override;
-	virtual void OnPostLogin(AController* NewPlayer) override;
-	virtual void Logout(AController* Exiting) override;
 
 	/** 플레이어가 스폰될 위치 선택 */
 	virtual AActor* ChoosePlayerStart_Implementation(AController* Player) override;

@@ -23,136 +23,103 @@ void AMemoryTracesGameMode::SpawnPawnForRole(AController* Ctrl, EPlayerRole PRol
 {
 	if (!Ctrl) return;
 
+	// PlayerStart 위치
+	FName StartTag = (PRole == EPlayerRole::Verifier) ? FName("PlayerStart_Verifier") : FName("PlayerStart_Detective");
+
+	TArray<AActor*> Starts;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), APlayerStart::StaticClass(), Starts);
+
+	AActor* StartSpot = nullptr;
+	for (AActor* S : Starts)
+	{
+		if (S->ActorHasTag(StartTag))
+		{
+			StartSpot = S;
+			break;
+		}
+	}
+	if (!StartSpot && Starts.Num() > 0)
+		StartSpot = Starts[0];
+
+	TSubclassOf<APawn> SpawnClass = (PRole == EPlayerRole::Verifier) ? VerifierClass : DetectiveClass;
+	if (!SpawnClass || !StartSpot)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[GameGM] Invalid SpawnClass or StartSpot"));
+		return;
+	}
+
+	FTransform SpawnTransform = StartSpot->GetActorTransform();
+
 	// 기존 Pawn 제거
 	if (APawn* OldPawn = Ctrl->GetPawn())
 	{
 		OldPawn->Destroy();
 	}
 
-	// PlayerStart 위치 찾기
-	FName StartTag = (PRole == EPlayerRole::Verifier)
-		? FName("PlayerStart_Verifier")
-		: FName("PlayerStart_Detective");
+	// Pawn 스폰
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = Ctrl;
+	SpawnParams.Instigator = Ctrl->GetPawn();
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
-	TArray<AActor*> PlayerStarts;
-	UGameplayStatics::GetAllActorsOfClass(GetWorld(), APlayerStart::StaticClass(), PlayerStarts);
-	AActor* StartSpot = nullptr;
-
-	for (AActor* Start : PlayerStarts)
+	APawn* NewPawn = GetWorld()->SpawnActor<APawn>(SpawnClass, SpawnTransform, SpawnParams);
+	if (NewPawn)
 	{
-		if (Start->ActorHasTag(StartTag))
-		{
-			StartSpot = Start;
-			break;
-		}
+		NewPawn->SetOwner(Ctrl);       //  올바른 방향
+		Ctrl->Possess(NewPawn);        // 컨트롤러가 Pawn을 소유
+		UE_LOG(LogTemp, Warning, TEXT("[GameGM] %s spawned as %s"),
+			*Ctrl->GetName(), *UEnum::GetValueAsString(PRole));
 	}
-
-	if (!StartSpot && PlayerStarts.Num() > 0)
-		StartSpot = PlayerStarts[0];
-
-	TSubclassOf<APawn> SpawnClass = (PRole == EPlayerRole::Verifier)
-		? VerifierClass
-		: DetectiveClass;
-
-	if (!SpawnClass || !StartSpot)
+	else
 	{
-		UE_LOG(LogTemp, Error, TEXT("[MFGameMode] Spawn failed: invalid class or start spot"));
+		UE_LOG(LogTemp, Error, TEXT("[GameGM] Failed to spawn pawn for %s"), *Ctrl->GetName());
+	}
+}
+
+void AMemoryTracesGameMode::SetupPlayersAfterTravel()
+{
+	UUMFGameInstance* GI = Cast<UUMFGameInstance>(GetGameInstance());
+	if (!GI)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[GameGM] GameInstance still not found after delay"));
 		return;
 	}
 
-	// Pawn 스폰 + Possess
-	FTransform SpawnTransform = StartSpot->GetActorTransform();
-	APawn* NewPawn = GetWorld()->SpawnActor<APawn>(SpawnClass, SpawnTransform);
-
-	if (NewPawn)
+	for (FConstPlayerControllerIterator It = GetWorld()->GetPlayerControllerIterator(); It; ++It)
 	{
-		Ctrl->Possess(NewPawn);
-		UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] %s spawned as %s"),
-			*Ctrl->GetName(), *UEnum::GetValueAsString(PRole));
+		APlayerController* PC = It->Get();
+		if (!PC) continue;
 
-		// PlayerState에도 반영
-		if (AMFPlayerState* PS = Ctrl->GetPlayerState<AMFPlayerState>())
+		EPlayerRole PRole = GI->GetPlayerRole(PC->GetName());
+		if (PRole == EPlayerRole::None)
 		{
-			PS->SetPlayerRole(PRole);
+			UE_LOG(LogTemp, Warning, TEXT("[GameGM] No role for %s"), *PC->GetName());
+			continue;
+		}
+
+		SpawnPawnForRole(PC, PRole);
+
+		if (AMFPlayerController* MPC = Cast<AMFPlayerController>(PC))
+		{
+			MPC->Client_ReceiveRole(PRole);
 		}
 	}
 }
+
 
 void AMemoryTracesGameMode::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
+	if (!HasAuthority()) return;
+
+	UE_LOG(LogTemp, Warning, TEXT("[GameGM] BeginPlay - Spawning players based on GameInstance roles"));
+
+	// GameInstance 초기화 완료될 시간을 약간 준다
+	FTimerHandle TimerHandle;
+	GetWorldTimerManager().SetTimer(TimerHandle, this, &AMemoryTracesGameMode::SetupPlayersAfterTravel, 0.2f, false);
 }
 
-void AMemoryTracesGameMode::OnPostLogin(AController* NewPlayer)
-{
-	Super::OnPostLogin(NewPlayer);
-	PlayerCount++;
-
-	UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] Player joined. Count = %d"), PlayerCount);
-	//  GameInstance 캐스팅
-	UUMFGameInstance* GI = Cast<UUMFGameInstance>(GetGameInstance());
-	if (!GI)
-	{
-		UE_LOG(LogTemp, Error, TEXT("[MFGameMode] GameInstance not found!"));
-		return;
-	}
-	if (PlayerCount < 2) return; // 두 명 접속 시점만 처리
-
-	// 모든 컨트롤러 가져오기
-	TArray<AController*> AllControllers;
-	for (FConstControllerIterator It = GetWorld()->GetControllerIterator(); It; ++It)
-	{
-		if (AController* C = It->Get())
-			AllControllers.Add(C);
-	}
-
-	if (AllControllers.Num() != 2) return;
-
-	// 랜덤 역할 배정
-	int32 RandomIndex = FMath::RandRange(0, 1);
-	AController* VerifierCtrl = AllControllers[RandomIndex];
-	AController* DetectiveCtrl = AllControllers[1 - RandomIndex];
-
-	GI->PlayerRoles.Empty();
-	GI->PlayerRoles.Add(VerifierCtrl->GetName(), EPlayerRole::Verifier);
-	GI->PlayerRoles.Add(DetectiveCtrl->GetName(), EPlayerRole::Detective);
-
-	UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] Random Role Assigned: %s = Verifier, %s = Detective"),
-		*VerifierCtrl->GetName(), *DetectiveCtrl->GetName());
-
-	// Pawn 스폰
-	SpawnPawnForRole(VerifierCtrl, EPlayerRole::Verifier);
-	SpawnPawnForRole(DetectiveCtrl, EPlayerRole::Detective);
-
-	// 각 클라이언트에게 역할 전달 (UI 생성용)
-	if (AMFPlayerController* PCV = Cast<AMFPlayerController>(VerifierCtrl))
-	{
-		FTimerHandle TimerV;
-		GetWorldTimerManager().SetTimer(TimerV, [PCV]()
-			{
-				if (IsValid(PCV))
-					PCV->Client_ReceiveRole(EPlayerRole::Verifier);
-			}, 1.0f, false);
-	}
-
-	if (AMFPlayerController* PCD = Cast<AMFPlayerController>(DetectiveCtrl))
-	{
-		FTimerHandle TimerD;
-		GetWorldTimerManager().SetTimer(TimerD, [PCD]()
-			{
-				if (IsValid(PCD))
-					PCD->Client_ReceiveRole(EPlayerRole::Detective);
-			}, 1.0f, false);
-	}
-}
-
-void AMemoryTracesGameMode::Logout(AController* Exiting)
-{
-	Super::Logout(Exiting);
-	PlayerCount = FMath::Max(0, PlayerCount - 1);
-	UE_LOG(LogTemp, Warning, TEXT("[MFGameMode] Player left. Count = %d"), PlayerCount);
-}
 
 AActor* AMemoryTracesGameMode::ChoosePlayerStart_Implementation(AController* Player)
 {
@@ -187,3 +154,6 @@ AActor* AMemoryTracesGameMode::ChoosePlayerStart_Implementation(AController* Pla
 	// 태그 못찾으면 기본값으로
 	return Super::ChoosePlayerStart_Implementation(Player);
 }
+
+
+

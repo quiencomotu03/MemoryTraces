@@ -18,6 +18,7 @@ class MEMORYTRACES_API UUMFGameInstance : public UGameInstance
 public:
 
 	UUMFGameInstance();
+    virtual void Init() override;
 
     UPROPERTY(BlueprintReadWrite)
     bool bIsMultiplayer = false;
@@ -29,17 +30,10 @@ public:
     UPROPERTY(BlueprintReadWrite)
     TMap<FString, EPlayerRole> PlayerRoles;
 
-    void SetPlayerRole(const FString& PlayerName, EPlayerRole Role)
-    {
-        PlayerRoles.FindOrAdd(PlayerName) = Role;
-    }
+    void SetPlayerRole(const FString& PlayerName, EPlayerRole Role);
+    
 
-    EPlayerRole GetPlayerRole(const FString& PlayerName) const
-    {
-        if (const EPlayerRole* Found = PlayerRoles.Find(PlayerName))
-            return *Found;
-        return EPlayerRole::Verifier; // 기본값
-    }
+    EPlayerRole GetPlayerRole(const FString& PlayerName) const;
    
 
     // 세션 Subsystem 접근용 헬퍼

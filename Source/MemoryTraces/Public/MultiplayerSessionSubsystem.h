@@ -25,10 +25,10 @@ public:
 	IOnlineSessionPtr SessionInterface;
 
 	UFUNCTION(BlueprintCallable)
-	void CreateServer(FString ServerName);
+	void CreateServer(FString ServerName, FString Password);
 
 	UFUNCTION(BlueprintCallable)
-	void FindServer(FString ServerName);
+	void FindServer(FString ServerName, FString InputPassword);
 
 	void OnCreateSessionComplete(FName SessionName, bool WasSuccessful);
 	void OnDestroySessionComplete(FName SessionName, bool WasSuccessful);
@@ -38,7 +38,9 @@ public:
 	bool CreateServerAfterDestroy;
 	FString DestroyServerName;
 	FString ServerNameToFind;
+	FString PasswordToFind;
 	FName MySessionName;
+	FString DestroyServerPassword;
 
 	TSharedPtr<FOnlineSessionSearch> SessionSearch;
 

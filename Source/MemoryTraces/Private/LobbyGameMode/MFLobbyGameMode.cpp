@@ -9,14 +9,17 @@ AMFLobbyGameMode::AMFLobbyGameMode()
 {
 	PlayerCount = 0;
 	DefaultPawnClass = nullptr;
-
+	// Seamless Travel 활성화 - 맵 이동 시 클라이언트 연결 유지
+	bUseSeamlessTravel = true;
+	
+	
 }
 
 void AMFLobbyGameMode::BeginPlay()
 {
 	Super::BeginPlay();
 	// 15초 후 자동 평가
-	GetWorldTimerManager().SetTimer(StartTimerHandle, this, &AMFLobbyGameMode::EvaluatePlayers, 15.0f, false);
+	//GetWorldTimerManager().SetTimer(StartTimerHandle, this, &AMFLobbyGameMode::EvaluatePlayers, 15.0f, false);
 }
 
 void AMFLobbyGameMode::OnPostLogin(AController* NewPlayer)
@@ -29,7 +32,7 @@ void AMFLobbyGameMode::OnPostLogin(AController* NewPlayer)
 	{
 		// 두 명 모이면 10초 후 자동 이동
 		GetWorldTimerManager().ClearTimer(StartTimerHandle);
-		GetWorldTimerManager().SetTimer(StartTimerHandle, this, &AMFLobbyGameMode::EvaluatePlayers, 10.0f, false);
+		GetWorldTimerManager().SetTimer(StartTimerHandle, this, &AMFLobbyGameMode::EvaluatePlayers, 5.0f, false);
 	}
 }
 
@@ -53,13 +56,22 @@ void AMFLobbyGameMode::EvaluatePlayers()
 	{
 		GI->bIsMultiplayer = true;
 		UE_LOG(LogTemp, Warning, TEXT("[Lobby] Moving to Multiplayer Level... "));
+		// ?listen 제거! ServerTravel에는 listen이 필요 없음
 		World->ServerTravel(TEXT("/Game/_GameAssets/Maps/Tutorail/Lvl_MultiplayerStart"));
 	}
-	else
-	{
-		GI->bIsMultiplayer = false;
-		UE_LOG(LogTemp, Warning, TEXT("[Lobby] Moving to SinglePlayer Level..."));
-		UGameplayStatics::OpenLevel(World, "Lvl_SinglePlayerStart");
-	}
+	
+}
 
+void AMFLobbyGameMode::PreLogin(const FString& Options, const FString& Address,
+	const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage)
+{
+	Super::PreLogin(Options, Address, UniqueId, ErrorMessage);
+	UE_LOG(LogTemp, Warning, TEXT("[PreLogin] Address: %s, Options: %s"),
+		*Address, *Options);
+}
+
+void AMFLobbyGameMode::HandleSeamlessTravelPlayer(AController*& Controller)
+{
+	Super::HandleSeamlessTravelPlayer(Controller);
+	UE_LOG(LogTemp, Warning, TEXT("[Seamless] Player transferred successfully"));
 }

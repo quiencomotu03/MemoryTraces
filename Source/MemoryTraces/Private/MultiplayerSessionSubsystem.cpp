@@ -1,4 +1,4 @@
-// Fill out your copyright notice in the Description page of Project Settings.
+ï»¿// Fill out your copyright notice in the Description page of Project Settings.
 
 
 #include "MultiplayerSessionSubsystem.h"
@@ -21,7 +21,7 @@ UMultiplayerSessionSubsystem::UMultiplayerSessionSubsystem()
 	CreateServerAfterDestroy = false;
 	DestroyServerName = "";
 	ServerNameToFind = "";
-	MySessionName = FName("Detectivegame Session Name");
+	MySessionName = FName("GameSession");  // ìœ íš¨í•œ ì„¸ì…˜ ì´ë¦„ ì„¤ì •
 
 }
 
@@ -51,7 +51,7 @@ void UMultiplayerSessionSubsystem::Deinitialize()
 	//UE_LOG(LogTemp, Warning, TEXT("Subsystem Deinitialized"));
 }
 
-void UMultiplayerSessionSubsystem::CreateServer(FString ServerName)
+void UMultiplayerSessionSubsystem::CreateServer(FString ServerName, FString Password)
 {
 	PrintString("CreateServer");
 	if (ServerName.IsEmpty())
@@ -68,6 +68,7 @@ void UMultiplayerSessionSubsystem::CreateServer(FString ServerName)
 		PrintString(Msg);
 		CreateServerAfterDestroy = true;
 		DestroyServerName = ServerName;
+		DestroyServerPassword = Password;
 		SessionInterface->DestroySession(MySessionName);
 		return;
 	}
@@ -76,55 +77,38 @@ void UMultiplayerSessionSubsystem::CreateServer(FString ServerName)
 	SessionSettings.bAllowJoinInProgress = true;
 	SessionSettings.bIsDedicated = false;
 	SessionSettings.bShouldAdvertise = true;
-	SessionSettings.NumPublicConnections = 2;
+	SessionSettings.NumPublicConnections = 10;
 	SessionSettings.bUseLobbiesIfAvailable = true;
 	SessionSettings.bUsesPresence = true;
 	SessionSettings.bAllowJoinViaPresence = true;
-	bool IsLAN = false;
-	if (IOnlineSubsystem::Get()->GetSubsystemName() == "NULL")
-	{
-		IsLAN = true;
-	}
+	// LAN ì„¤ì •
+	bool IsLAN = (IOnlineSubsystem::Get()->GetSubsystemName() == "NULL");
 	SessionSettings.bIsLANMatch = IsLAN;
-	// ÀÌ ºÎºÐ Ãß°¡ - SERVER_NAME ¼³Á¤
-	SessionSettings.Set(FName("SERVER_NAME"), ServerName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
 
-	ServerNameToFind = ServerName;
+	// ì„¸ì…˜ ë°ì´í„° ì„¤ì •
+	SessionSettings.Set(FName("SERVER_NAME"), ServerName, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+	SessionSettings.Set(FName("SERVER_PASSWORD"), Password, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+
 	SessionInterface->CreateSession(0, MySessionName, SessionSettings);
 
 }
 
-void UMultiplayerSessionSubsystem::FindServer(FString ServerName)
-{
-	PrintString("FindServer");
-	if (ServerName.IsEmpty())
-	{
-		PrintString("Server Name can not be empty");
-		return;
-	}
-	ServerNameToFind = ServerName;
-	SessionSearch = MakeShareable(new FOnlineSessionSearch());
-	bool IsLAN = false;
-	if (IOnlineSubsystem::Get()->GetSubsystemName() == "NULL")
-	{
-		IsLAN = true;
-	}
-	SessionSearch->bIsLanQuery = IsLAN;
-	SessionSearch->MaxSearchResults = 9999;
-	SessionSearch->QuerySettings.Set(SEARCH_PRESENCE, true, EOnlineComparisonOp::Equals);
-
-	SessionInterface->FindSessions(0, SessionSearch.ToSharedRef());
-
-}
 void UMultiplayerSessionSubsystem::OnCreateSessionComplete(FName SessionName, bool WasSuccessful)
 {
 	PrintString(FString::Printf(TEXT("OnCreateSessionComplete: %d"), WasSuccessful));
 
 	if (WasSuccessful)
 	{
-		GetWorld()->ServerTravel("/Game/_GameAssets/Maps/Lvl_Lobby?listen?port=7777");
+		// listen íŒŒë¼ë¯¸í„° í™•ì¸!
+		FString TravelURL = FString::Printf(TEXT("/Game/_GameAssets/Maps/Lvl_CreatSessionTEST?listen"));
+		PrintString(FString::Printf(TEXT("Server traveling to: %s"), *TravelURL));
+
+		GetWorld()->ServerTravel(TravelURL);
 	}
-	PrintString("Enter Lobby Level");
+	else
+	{
+		PrintString("Failed to create session");
+	}
 }
 void UMultiplayerSessionSubsystem::OnDestroySessionComplete(FName SessionName, bool WasSuccessful)
 {
@@ -134,7 +118,57 @@ void UMultiplayerSessionSubsystem::OnDestroySessionComplete(FName SessionName, b
 	if (CreateServerAfterDestroy)
 	{
 		CreateServerAfterDestroy = false;
-		CreateServer(DestroyServerName);
+		CreateServer(DestroyServerName, DestroyServerPassword);
+	}
+}
+
+
+#pragma region CLIENT
+
+void UMultiplayerSessionSubsystem::FindServer(FString ServerName, FString InputPassword)
+{
+	PrintString("FindServer");
+	if (ServerName.IsEmpty() || InputPassword.IsEmpty())
+	{
+		PrintString("Server Name or password can not be empty");
+		return;
+	}
+	ServerNameToFind = ServerName;
+	PasswordToFind = InputPassword;
+
+	SessionSearch = MakeShareable(new FOnlineSessionSearch());
+	bool IsLAN = false;
+	SessionSearch = MakeShareable(new FOnlineSessionSearch());
+	SessionSearch->bIsLanQuery = IsLAN;
+	SessionSearch->MaxSearchResults = 100;
+	SessionSearch->QuerySettings.Set(SEARCH_PRESENCE, true, EOnlineComparisonOp::Equals);
+
+	// Steamì˜ ê²½ìš° ì¶”ê°€ ì„¤ì • í•„ìš”
+	if (IOnlineSubsystem::Get()->GetSubsystemName() == "Steam")
+	{
+		SessionSearch->QuerySettings.Set(SEARCH_LOBBIES, true, EOnlineComparisonOp::Equals);
+	}
+
+	SessionInterface->FindSessions(0, SessionSearch.ToSharedRef());
+	for (auto& Result : SessionSearch->SearchResults)
+	{
+		FString FoundName, FoundPassword;
+		Result.Session.SessionSettings.Get(FName("SERVER_NAME"), FoundName);
+
+		// ì„¸ì…˜ ì •ë³´ ë””ë²„ê¹…
+		FString SessionInfo = Result.Session.GetSessionIdStr();
+		FString OwningUserName = Result.Session.OwningUserName;
+		int32 Ping = Result.PingInMs;
+
+		PrintString(FString::Printf(TEXT("Found Session - Name: %s, ID: %s, Owner: %s, Ping: %d"),
+			*FoundName, *SessionInfo, *OwningUserName, Ping));
+
+		if (FoundName.Equals(ServerNameToFind) && FoundPassword.Equals(PasswordToFind))
+		{
+			PrintString("Joining matching server...");
+			SessionInterface->JoinSession(0, MySessionName, Result);
+			return;
+		}
 	}
 }
 
@@ -142,114 +176,70 @@ void UMultiplayerSessionSubsystem::OnFindSessionComplete(bool WasSuccessful)
 {
 	if (!WasSuccessful)
 	{
-		PrintString("FindSessions was not successful");
+		PrintString("FindSession failed");
 		return;
 	}
 
-	if (ServerNameToFind.IsEmpty())
+	if (!SessionSearch.IsValid())
 	{
-		PrintString("ServerNameToFind is empty");
+		PrintString("SessionSearch is invalid");
 		return;
 	}
-	TArray<FOnlineSessionSearchResult> Results = SessionSearch->SearchResults;
-	FOnlineSessionSearchResult* CorrectResult = 0;
 
-	if (Results.Num() > 0)
+	PrintString(FString::Printf(TEXT("Found %d sessions"), SessionSearch->SearchResults.Num()));
+
+	for (auto& Result : SessionSearch->SearchResults)
 	{
-		FString Msg = FString::Printf(TEXT("%d sessions found."), Results.Num());
-		PrintString(Msg);
+		FString FoundName, FoundPassword;
+		Result.Session.SessionSettings.Get(FName("SERVER_NAME"), FoundName);
+		Result.Session.SessionSettings.Get(FName("SERVER_PASSWORD"), FoundPassword);
 
-		// ÀÎµ¦½º ±â¹ÝÀ¸·Î ¼öÁ¤
-		for (int32 i = 0; i < Results.Num(); i++)
+		PrintString(FString::Printf(TEXT("Session found - Name: %s, Password: %s"),
+			*FoundName, *FoundPassword));
+
+		if (FoundName.Equals(ServerNameToFind) && FoundPassword.Equals(PasswordToFind))
 		{
-			if (Results[i].IsValid())
-			{
-				FString ServerName = "No-name";
-				Results[i].Session.SessionSettings.Get(FName("SERVER_NAME"), ServerName);
-
-				FString Msg2 = FString::Printf(TEXT("Checking server: %s"), *ServerName);
-				PrintString(Msg2);
-
-				if (ServerName.Equals(ServerNameToFind))
-				{
-					FString Msg3 = FString::Printf(TEXT("Found matching server: %s"), *ServerName);
-					PrintString(Msg3);
-
-					// ¹Ù·Î Á¶ÀÎ
-					SessionInterface->JoinSession(0, MySessionName, Results[i]);
-					return;
-				}
-			}
+			PrintString("Attempting to join matching server...");
+			SessionInterface->JoinSession(0, MySessionName, Result);
+			return;
 		}
+	}
 
-		// Ã£Áö ¸øÇÑ °æ¿ì
-		PrintString(FString::Printf(TEXT("Couldn't find server: %s"), *ServerNameToFind));
-		ServerNameToFind = "";
-	}
-	else
-	{
-		PrintString("Zero sessions found.");
-	}
+	PrintString("No server matched the given name/password");
 }
 void UMultiplayerSessionSubsystem::OnJoinSessionComplete(FName SessionName, EOnJoinSessionCompleteResult::Type Result)
 {
-	FString ResultString;
-	switch (Result)
+	if (Result != EOnJoinSessionCompleteResult::Success)
 	{
-	case EOnJoinSessionCompleteResult::Success:
-		ResultString = "Success";
-		break;
-	case EOnJoinSessionCompleteResult::SessionIsFull:
-		ResultString = "SessionIsFull";
-		break;
-	case EOnJoinSessionCompleteResult::SessionDoesNotExist:
-		ResultString = "SessionDoesNotExist";
-		break;
-	case EOnJoinSessionCompleteResult::CouldNotRetrieveAddress:
-		ResultString = "CouldNotRetrieveAddress";
-		break;
-	case EOnJoinSessionCompleteResult::AlreadyInSession:
-		ResultString = "AlreadyInSession";
-		break;
-	case EOnJoinSessionCompleteResult::UnknownError:
-		ResultString = "UnknownError";
-		break;
+		PrintString("Failed to join session");
+		return;
 	}
 
-	if (Result == EOnJoinSessionCompleteResult::Success)
+	FString Address;
+	if (!SessionInterface->GetResolvedConnectString(MySessionName, Address))
 	{
-		FString Address;
-		bool Success = SessionInterface->GetResolvedConnectString(MySessionName, Address);
+		PrintString("Could not resolve connect string.");
+		return;
+	}
 
-		if (Success)
+	// í¬íŠ¸ê°€ 0ì´ê±°ë‚˜ ì—†ìœ¼ë©´ 7777ë¡œ ê°•ì œ ì„¤ì •
+	if (!Address.Contains(":") || Address.EndsWith(":0"))
+	{
+		// IPë§Œ ì¶”ì¶œ
+		FString IP = Address;
+		if (Address.Contains(":"))
 		{
-			PrintString(FString::Printf(TEXT("Address: %s"), *Address));
-
-			//  ¿©±â ¼öÁ¤
-			UWorld* World = GetWorld();
-			if (World)
-			{
-				APlayerController* PlayerController = UGameplayStatics::GetPlayerController(World, 0);
-				if (PlayerController)
-				{
-					PrintString("ClientTravel Executed!");
-					PlayerController->ClientTravel(Address, ETravelType::TRAVEL_Absolute);
-				}
-				else
-				{
-					PrintString("PlayerController is NULL!");
-				}
-			}
-			else
-			{
-				PrintString("World is NULL!");
-			}
+			IP = Address.Left(Address.Find(":"));
 		}
+		Address = FString::Printf(TEXT("%s:7777"), *IP);
 	}
 
-	else
+	PrintString(FString::Printf(TEXT("Attempting to join: %s"), *Address));
+
+	if (APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0))
 	{
-		PrintString("OnJoinSessionComplete failed");
+		PC->ClientTravel(Address, ETravelType::TRAVEL_Absolute);
 	}
 
 }
+#pragma endregion

@@ -22,7 +22,10 @@ protected:
     virtual void BeginPlay() override;
     virtual void OnPostLogin(AController* NewPlayer) override;
     virtual void Logout(AController* Exiting) override;
-
+    // Seamless Travel 관련 함수 오버라이드
+    virtual void PreLogin(const FString& Options, const FString& Address,
+        const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage) override;
+    virtual void HandleSeamlessTravelPlayer(AController*& Controller) override;
 private:
     int32 PlayerCount;
     FTimerHandle StartTimerHandle;
